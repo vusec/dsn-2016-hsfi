@@ -1,0 +1,27 @@
+From 8a4b6b2f7fd29d8448838c9b6f52d61c0febc486 Mon Sep 17 00:00:00 2001
+From: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+Date: Sun, 10 Nov 2013 16:15:27 +0100
+Subject: [PATCH 01/18] llvmlinux: hack to redefine memcpy
+
+Signed-off-by: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+---
+ arch/x86/boot/compressed/string.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/x86/boot/compressed/string.c b/arch/x86/boot/compressed/string.c
+index ffb9c5c..19c0949 100644
+--- a/arch/x86/boot/compressed/string.c
++++ b/arch/x86/boot/compressed/string.c
+@@ -1,5 +1,9 @@
+ #include "misc.h"
+ 
++#ifdef memcmp
++#undef memcmp
++#endif
++
+ int memcmp(const void *s1, const void *s2, size_t len)
+ {
+ 	u8 diff;
+-- 
+1.8.3.1
+

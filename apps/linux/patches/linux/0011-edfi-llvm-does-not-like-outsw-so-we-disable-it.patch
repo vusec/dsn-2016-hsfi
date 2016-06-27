@@ -1,0 +1,31 @@
+From b1fbaad93c16996f1fa69dec0991067d39fedd8a Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Fri, 21 Mar 2014 17:06:38 +0100
+Subject: [PATCH 11/18] edfi: llvm does not like outsw so we disable it
+
+The llvm backend does not recognise the outsw instruction as being valid. Due
+to this we disable the FAST_READ and FAST_WRITE for the in2000 scsi driver
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ drivers/scsi/in2000.h | 4 ----
+ 1 file changed, 4 deletions(-)
+
+diff --git a/drivers/scsi/in2000.h b/drivers/scsi/in2000.h
+index 5821e1f..46e9b4f 100644
+--- a/drivers/scsi/in2000.h
++++ b/drivers/scsi/in2000.h
+@@ -34,10 +34,6 @@
+ #define DEBUGGING_ON       /* enable command-line debugging bitmask */
+ #define DEBUG_DEFAULTS 0   /* default bitmask - change from command-line */
+ 
+-#ifdef __i386__
+-#define FAST_READ_IO       /* No problems with these on my machine */
+-#define FAST_WRITE_IO
+-#endif
+ 
+ #ifdef DEBUGGING_ON
+ #define DB(f,a) if (hostdata->args & (f)) a;
+-- 
+1.8.3.1
+

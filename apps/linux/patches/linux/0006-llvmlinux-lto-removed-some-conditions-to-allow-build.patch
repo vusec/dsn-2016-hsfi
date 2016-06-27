@@ -1,0 +1,43 @@
+From fff9812315ff9b7062254ae119bbe80d8536b9f4 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Tue, 17 Dec 2013 14:34:08 +0100
+Subject: [PATCH 06/18] llvmlinux-lto: removed some conditions to allow
+ building for now
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ scripts/Makefile.lto | 15 +++++++++++----
+ 1 file changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index c51857b..8f09ff4 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -12,13 +12,20 @@ ifdef CONFIG_LTO
+ # 4.7 works mostly, but it sometimes loses symbols on large builds
+ # This can be worked around by marking those symbols visible,
+ # but that is fairly ugly and the problem is gone with 4.8
+-# So only allow it with 4.8 for now.
+-ifeq ($(call cc-ifversion, -ge, 0408,y),y)
++# So only allow it with 4.8 for now. We also allow any version of clang
++ifeq ($(call cc-ifversion, -ge, 0408, y), y)
++	OK_LTO = "True"
++endif
++ifeq ($(COMPILER), clang)
++	OK_LTO = "True"
++endif
++ifdef OK_LTO
+ ifneq ($(call cc-option,${LTO_CFLAGS},n),n)
+ # We need HJ Lu's Linux binutils because mainline binutils does not
+ # support mixing assembler and LTO code in the same ld -r object.
+-# XXX check if the gcc plugin ld is the expected one too
+-ifeq ($(call ld-ifversion,-ge,22710001,y),y)
++# XXX check if the gcc plugin ld is the expected one too.
++# <RG> Temp hack to allow for clang compilations -> should modify to allow gold always
++ifeq ($(COMPILER), clang)
+         LTO_CFLAGS := -flto -fno-toplevel-reorder
+ 	LTO_FINAL_CFLAGS := -fuse-linker-plugin
+ 
+-- 
+1.8.3.1
+

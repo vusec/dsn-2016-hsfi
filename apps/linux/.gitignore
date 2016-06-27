@@ -1,0 +1,9 @@
+/autosetup-paths.inc
+/common.inc
+/mypwd.mk
+/src/
+/state
+/build.done
+*.o.cmd
+/toolchain/
+

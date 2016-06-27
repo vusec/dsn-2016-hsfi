@@ -1,0 +1,13 @@
+diff --git a/Makefile b/Makefile
+index 482d3e4..3a60e15 100644
+--- a/Makefile
++++ b/Makefile
+@@ -256,6 +256,8 @@ HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter -Wno-missing-field-initia
+ 		-fno-delete-null-pointer-checks
+ endif
+ 
++HOSTCFLAGS+= -D_FILE_OFFSET_BITS=64
++
+ # Decide whether to build built-in, modular, or both.
+ # Normally, just do built-in.
+ 

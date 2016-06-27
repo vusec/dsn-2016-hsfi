@@ -1,0 +1,33 @@
+#!/bin/bash
+if [ ! -f common.inc -a -f ../common.inc ]; then
+	cd ..
+fi
+source common.inc
+. $ROOT/script.inc
+cd $KERNEL_SRC
+
+: ${PATHBOOTDIR="$KERNEL_SRC/arch/x86/boot"}
+: ${PATHBOOTDIR_I386="$KERNEL_SRC/arch/i386/boot"}
+: ${PATHMODORDER="$KERNEL_SRC/modules.order"}
+: ${PATHVMLINUX="$KERNEL_SRC/vmlinux"}
+
+set -eE
+
+mkdir -p "$PATHBOOTDIR/compressed"
+nm "$PATHVMLINUX" | sed -n -e 's/^\([0-9a-fA-F]*\) . \(_text\|_end\)$/#define VO_\2 0x\1/p' > $PATHBOOTDIR/voffset.h
+objcopy  -R .comment -S "$PATHVMLINUX" $PATHBOOTDIR/compressed/vmlinux.bin
+arch/x86/tools/relocs "$PATHVMLINUX" > $PATHBOOTDIR/compressed/vmlinux.relocs;arch/x86/tools/relocs --abs-relocs "$PATHVMLINUX"
+(cat $PATHBOOTDIR/compressed/vmlinux.bin $PATHBOOTDIR/compressed/vmlinux.relocs | gzip -n -f -9 > $PATHBOOTDIR/compressed/vmlinux.bin.gz) || (rm -f $PATHBOOTDIR/compressed/vmlinux.bin.gz ; false)
+$PATHBOOTDIR/compressed/mkpiggy $PATHBOOTDIR/compressed/vmlinux.bin.gz > $PATHBOOTDIR/compressed/piggy.S || ( rm -f $PATHBOOTDIR/compressed/piggy.S ; false )
+$LLVM_BIN/bin/clang -Wp,-MD,$PATHBOOTDIR/compressed/.piggy.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments  -m32 -D__KERNEL__  -O2 -fno-strict-aliasing -fPIC -DDISABLE_BRANCH_PROFILING -march=i386 -ffreestanding -fno-stack-protector -D__ASSEMBLY__         -c -o $PATHBOOTDIR/compressed/piggy.o $PATHBOOTDIR/compressed/piggy.S
+ld.gold -m elf_i386   -T $PATHBOOTDIR/compressed/vmlinux.lds $PATHBOOTDIR/compressed/head_32.o $PATHBOOTDIR/compressed/misc.o $PATHBOOTDIR/compressed/string.o $PATHBOOTDIR/compressed/cmdline.o $PATHBOOTDIR/compressed/early_serial_console.o $PATHBOOTDIR/compressed/piggy.o -o $PATHBOOTDIR/compressed/vmlinux 
+nm $PATHBOOTDIR/compressed/vmlinux | sed -n -e 's/^\([0-9a-fA-F]*\) . \(startup_32\|startup_64\|efi_pe_entry\|efi_stub_entry\|input_data\|_end\|z_.*\)$/#define ZO_\2 0x\1/p' > $PATHBOOTDIR/zoffset.h
+$LLVM_BIN/bin/clang -Wp,-MD,$PATHBOOTDIR/.header.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments   -g -Os -D_SETUP -D__KERNEL__ -DDISABLE_BRANCH_PROFILING -Wall -Wstrict-prototypes -march=i386 -mregparm=3 -include $PATHBOOTDIR/code16gcc.h -fno-strict-aliasing -fomit-frame-pointer -fno-pic  -ffreestanding  -fno-toplevel-reorder  -fno-stack-protector  -mpreferred-stack-boundary=2  -m32 -Wno-unused-value -Wno-unused-parameter -mno-sse -no-integrated-as -D__ASSEMBLY__   -DSVGA_MODE=NORMAL_VGA -Iarch/x86/boot   -c -o $PATHBOOTDIR/header.o $PATHBOOTDIR/header.S
+$LLVM_BIN/bin/clang -Wp,-MD,$PATHBOOTDIR/.version.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -g -Os -D_SETUP -D__KERNEL__ -DDISABLE_BRANCH_PROFILING -Wall -Wstrict-prototypes -march=i386 -mregparm=3 -include $PATHBOOTDIR/code16gcc.h -fno-strict-aliasing -fomit-frame-pointer -fno-pic -ffreestanding -fno-toplevel-reorder -fno-stack-protector -mpreferred-stack-boundary=2 -m32 -Wno-unused-value -Wno-unused-parameter -mno-sse -no-integrated-as    -D"KBUILD_STR(s)=#s" -D"KBUILD_BASENAME=KBUILD_STR(version)"  -D"KBUILD_MODNAME=KBUILD_STR(version)" -c -o $PATHBOOTDIR/version.o $PATHBOOTDIR/version.c
+ld.gold -m elf_i386   -T $PATHBOOTDIR/setup.ld $PATHBOOTDIR/a20.o $PATHBOOTDIR/bioscall.o $PATHBOOTDIR/cmdline.o $PATHBOOTDIR/copy.o $PATHBOOTDIR/cpu.o $PATHBOOTDIR/cpucheck.o $PATHBOOTDIR/early_serial_console.o $PATHBOOTDIR/edd.o $PATHBOOTDIR/header.o $PATHBOOTDIR/main.o $PATHBOOTDIR/mca.o $PATHBOOTDIR/memory.o $PATHBOOTDIR/pm.o $PATHBOOTDIR/pmjump.o $PATHBOOTDIR/printf.o $PATHBOOTDIR/regs.o $PATHBOOTDIR/string.o $PATHBOOTDIR/tty.o $PATHBOOTDIR/video.o $PATHBOOTDIR/video-mode.o $PATHBOOTDIR/version.o $PATHBOOTDIR/video-vga.o $PATHBOOTDIR/video-vesa.o $PATHBOOTDIR/video-bios.o -o $PATHBOOTDIR/setup.elf 
+objcopy  -O binary $PATHBOOTDIR/setup.elf $PATHBOOTDIR/setup.bin
+objcopy  -O binary -R .note -R .comment -S $PATHBOOTDIR/compressed/vmlinux $PATHBOOTDIR/vmlinux.bin
+$PATHBOOTDIR/tools/build $PATHBOOTDIR/setup.bin $PATHBOOTDIR/vmlinux.bin $PATHBOOTDIR/zoffset.h > $PATHBOOTDIR/bzImage
+mkdir -p $PATHBOOTDIR_I386
+ln -fsn $PATHBOOTDIR/bzImage $PATHBOOTDIR_I386/bzImage
+awk '!x[$0]++' $KERNEL_SRC/init/modules.order $KERNEL_SRC/usr/modules.order $KERNEL_SRC/arch/x86/modules.order $KERNEL_SRC/kernel/modules.order $KERNEL_SRC/mm/modules.order $KERNEL_SRC/fs/modules.order $KERNEL_SRC/ipc/modules.order $KERNEL_SRC/security/modules.order $KERNEL_SRC/crypto/modules.order $KERNEL_SRC/block/modules.order $KERNEL_SRC/edfi/modules.order $KERNEL_SRC/drivers/modules.order $KERNEL_SRC/sound/modules.order $KERNEL_SRC/firmware/modules.order $KERNEL_SRC/arch/x86/pci/modules.order $KERNEL_SRC/arch/x86/power/modules.order $KERNEL_SRC/arch/x86/video/modules.order $KERNEL_SRC/net/modules.order $KERNEL_SRC/lib/modules.order $KERNEL_SRC/arch/x86/lib/modules.order > "$PATHMODORDER"

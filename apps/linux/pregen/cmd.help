@@ -1,0 +1,5 @@
+# Get all the mod.c files from a kernel tree (without paths)
+find . -name '*\.mod.c' | sort | rev | cut -d"/" -f1 | rev
+
+# Get paths for files
+find . -name '*\.mod.c' | sort | rev | cut -d"/" -f2-15 | rev

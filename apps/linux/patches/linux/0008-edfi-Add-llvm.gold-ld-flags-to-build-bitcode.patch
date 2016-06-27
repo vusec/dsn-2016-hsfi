@@ -1,0 +1,48 @@
+From 8bd72507b31e79cf8b709a88834b2ffb61f67a91 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Thu, 16 Jan 2014 15:56:57 +0200
+Subject: [PATCH 08/18] edfi: Add llvm.gold ld flags to build bitcode
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ scripts/Makefile.lto | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index 8f09ff4..a801294 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -7,6 +7,7 @@ LTO_CFLAGS :=
+ 
+ export DISABLE_LTO
+ export LTO_CFLAGS
++export LTO_LDFLAGS
+ 
+ ifdef CONFIG_LTO
+ # 4.7 works mostly, but it sometimes loses symbols on large builds
+@@ -26,12 +27,12 @@ ifneq ($(call cc-option,${LTO_CFLAGS},n),n)
+ # XXX check if the gcc plugin ld is the expected one too.
+ # <RG> Temp hack to allow for clang compilations -> should modify to allow gold always
+ ifeq ($(COMPILER), clang)
+-        LTO_CFLAGS := -flto -fno-toplevel-reorder
++    LTO_CFLAGS := -flto -fno-toplevel-reorder
+ 	LTO_FINAL_CFLAGS := -fuse-linker-plugin
+ 
+ # the -fno-toplevel-reorder is to preserve the order of initcalls
+ # everything else should tolerate reordering
+-        LTO_FINAL_CFLAGS +=-fno-toplevel-reorder
++	LTO_FINAL_CFLAGS +=-fno-toplevel-reorder
+ 
+ # enable LTO and set the jobs used by the LTO phase
+ # this should be -flto=jobserver to coordinate with the
+@@ -73,6 +74,7 @@ endif
+ 
+ 	LDFINAL := ${CONFIG_SHELL} ${srctree}/scripts/gcc-ld \
+                   ${LTO_FINAL_CFLAGS}
++	LTO_LDFLAGS := -plugin /home/skyel/git/llvmlinux/toolchain/clang/build/llvm/lib/LLVMgold.so -plugin-opt=emit-llvm
+ 
+ else
+         $(warning "WARNING: Too old linker version $(call ld-version) for kernel LTO. You need Linux binutils. CONFIG_LTO disabled.")
+-- 
+1.8.3.1
+

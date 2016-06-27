@@ -1,0 +1,27 @@
+From a375e4828ff349d8d97f00c18e6c467537ab7be7 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Mon, 26 May 2014 17:18:43 +0200
+Subject: [PATCH] edfi_system: Split vars.mk into vars.mk and mypwd.mk
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ scripts/Makefile.lto | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index e7a58a0..924f504 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -13,7 +13,8 @@ export BITCODE_VMLINUX_LDFLAGS
+ 
+ ifdef CONFIG_LTO
+ ifdef LLVM_VARS
+-    include $(LLVM_VARS)
++    include $(LLVM_VARS)/mypwd.mk
++    include $(LLVM_VARS)/vars.mk
+ endif
+ # 4.7 works mostly, but it sometimes loses symbols on large builds
+ # This can be worked around by marking those symbols visible,
+-- 
+1.8.3.1
+

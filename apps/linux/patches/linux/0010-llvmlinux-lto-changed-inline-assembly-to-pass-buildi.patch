@@ -1,0 +1,133 @@
+From bbddaf8200f7f5f68c825763b213887a05af242f Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Tue, 4 Mar 2014 15:49:43 +0100
+Subject: [PATCH 10/18] llvmlinux-lto: changed inline assembly to pass building
+
+This patch changes inline assembly that is considered erroneous
+by the llvm gold plugin. We add some size modifier as well as modify
+some inline asm constraints for more lenients alternatives which are
+allowed by the plugin during linking
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/include/asm/alternative.h |  6 +++---
+ arch/x86/include/asm/atomic64_32.h |  2 +-
+ arch/x86/include/asm/bitops.h      | 16 ++++++++--------
+ 3 files changed, 12 insertions(+), 12 deletions(-)
+
+diff --git a/arch/x86/include/asm/alternative.h b/arch/x86/include/asm/alternative.h
+index 58ed6d9..fa5dee9 100644
+--- a/arch/x86/include/asm/alternative.h
++++ b/arch/x86/include/asm/alternative.h
+@@ -168,7 +168,7 @@ static inline int alternatives_text_reserved(void *start, void *end)
+ /* Like alternative_io, but for replacing a direct call with another one. */
+ #define alternative_call(oldfunc, newfunc, feature, output, input...)	\
+ 	asm volatile (ALTERNATIVE("call %P[old]", "call %P[new]", feature) \
+-		: output : [old] "i" (oldfunc), [new] "i" (newfunc), ## input)
++		: output : [old] "X" (oldfunc), [new] "X" (newfunc), ## input)
+ 
+ /*
+  * Like alternative_call, but there are two features and respective functions.
+@@ -180,8 +180,8 @@ static inline int alternatives_text_reserved(void *start, void *end)
+ 			   output, input...)				      \
+ 	asm volatile (ALTERNATIVE_2("call %P[old]", "call %P[new1]", feature1,\
+ 		"call %P[new2]", feature2)				      \
+-		: output : [old] "i" (oldfunc), [new1] "i" (newfunc1),	      \
+-		[new2] "i" (newfunc2), ## input)
++		: output : [old] "X" (oldfunc), [new1] "X" (newfunc1),	      \
++		[new2] "X" (newfunc2), ## input)
+ 
+ /*
+  * use this macro(s) if you need more than one output parameter
+diff --git a/arch/x86/include/asm/atomic64_32.h b/arch/x86/include/asm/atomic64_32.h
+index b154de7..7e2d02d 100644
+--- a/arch/x86/include/asm/atomic64_32.h
++++ b/arch/x86/include/asm/atomic64_32.h
+@@ -25,7 +25,7 @@ typedef struct {
+ #ifdef CONFIG_X86_CMPXCHG64
+ #define __alternative_atomic64(f, g, out, in...) \
+ 	asm volatile("call %P[func]" \
+-		     : out : [func] "i" (atomic64_##g##_cx8), ## in)
++		     : out : [func] "X" (atomic64_##g##_cx8), ## in)
+ 
+ #define ATOMIC64_DECL(sym) ATOMIC64_DECL_ONE(sym##_cx8)
+ #else
+diff --git a/arch/x86/include/asm/bitops.h b/arch/x86/include/asm/bitops.h
+index 6dfd019..6ed3d1e 100644
+--- a/arch/x86/include/asm/bitops.h
++++ b/arch/x86/include/asm/bitops.h
+@@ -67,7 +67,7 @@ set_bit(unsigned int nr, volatile unsigned long *addr)
+ 			: "iq" ((u8)CONST_MASK(nr))
+ 			: "memory");
+ 	} else {
+-		asm volatile(LOCK_PREFIX "bts %1,%0"
++		asm volatile(LOCK_PREFIX "btsl %1,%0"
+ 			: BITOP_ADDR(addr) : "Ir" (nr) : "memory");
+ 	}
+ }
+@@ -83,7 +83,7 @@ set_bit(unsigned int nr, volatile unsigned long *addr)
+  */
+ static inline void __set_bit(int nr, volatile unsigned long *addr)
+ {
+-	asm volatile("bts %1,%0" : ADDR : "Ir" (nr) : "memory");
++	asm volatile("btsl %1,%0" : ADDR : "Ir" (nr) : "memory");
+ }
+ 
+ /**
+@@ -104,7 +104,7 @@ clear_bit(int nr, volatile unsigned long *addr)
+ 			: CONST_MASK_ADDR(nr, addr)
+ 			: "iq" ((u8)~CONST_MASK(nr)));
+ 	} else {
+-		asm volatile(LOCK_PREFIX "btr %1,%0"
++		asm volatile(LOCK_PREFIX "btrl %1,%0"
+ 			: BITOP_ADDR(addr)
+ 			: "Ir" (nr));
+ 	}
+@@ -126,7 +126,7 @@ static inline void clear_bit_unlock(unsigned nr, volatile unsigned long *addr)
+ 
+ static inline void __clear_bit(int nr, volatile unsigned long *addr)
+ {
+-	asm volatile("btr %1,%0" : ADDR : "Ir" (nr));
++	asm volatile("btrl %1,%0" : ADDR : "Ir" (nr));
+ }
+ 
+ /*
+@@ -198,7 +198,7 @@ static inline int test_and_set_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm volatile(LOCK_PREFIX "bts %2,%1\n\t"
++	asm volatile(LOCK_PREFIX "btsl %2,%1\n\t"
+ 		     "sbb %0,%0" : "=r" (oldbit), ADDR : "Ir" (nr) : "memory");
+ 
+ 	return oldbit;
+@@ -230,7 +230,7 @@ static inline int __test_and_set_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm("bts %2,%1\n\t"
++	asm("btsl %2,%1\n\t"
+ 	    "sbb %0,%0"
+ 	    : "=r" (oldbit), ADDR
+ 	    : "Ir" (nr));
+@@ -249,7 +249,7 @@ static inline int test_and_clear_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm volatile(LOCK_PREFIX "btr %2,%1\n\t"
++	asm volatile(LOCK_PREFIX "btrl %2,%1\n\t"
+ 		     "sbb %0,%0"
+ 		     : "=r" (oldbit), ADDR : "Ir" (nr) : "memory");
+ 
+@@ -276,7 +276,7 @@ static inline int __test_and_clear_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm volatile("btr %2,%1\n\t"
++	asm volatile("btrl %2,%1\n\t"
+ 		     "sbb %0,%0"
+ 		     : "=r" (oldbit), ADDR
+ 		     : "Ir" (nr));
+-- 
+1.8.3.1
+

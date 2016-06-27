@@ -1,0 +1,49 @@
+From fcf1891c6525c6e0085454592a4e06301b617918 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Thu, 26 Jun 2014 16:16:45 +0200
+Subject: [PATCH] edfi-kernel: add info for edfi section
+
+This patches adds the edfi section in the kernel linking script as to not
+have any surprises with the linker placing the sections randomly
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/kernel/vmlinux.lds.S | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/x86/kernel/vmlinux.lds.S b/arch/x86/kernel/vmlinux.lds.S
+index 10c4f30..ce0ad73 100644
+--- a/arch/x86/kernel/vmlinux.lds.S
++++ b/arch/x86/kernel/vmlinux.lds.S
+@@ -171,6 +171,20 @@ SECTIONS
+ 
+ #endif /* CONFIG_X86_64 */
+ 
++	. = ALIGN(4);
++	edfi_data_ro : AT(ADDR(edfi_data_ro) - LOAD_OFFSET) {
++		__edfi_data_ro_start = .;
++		*(edfi_data_ro)
++		__edfi_data_ro_end = .;
++	}
++
++	. = ALIGN(4);
++	edfi_data : AT(ADDR(edfi_data) - LOAD_OFFSET) {
++		__edfi_data_start = .;
++		*(edfi_data)
++		__edfi_data_end = .;
++	}
++
+ 	/* Init code and data - will be freed after init */
+ 	. = ALIGN(PAGE_SIZE);
+ 	.init.begin : AT(ADDR(.init.begin) - LOAD_OFFSET) {
+@@ -193,6 +207,7 @@ SECTIONS
+ 
+ 	INIT_DATA_SECTION(16)
+ 
++
+ 	.x86_cpu_dev.init : AT(ADDR(.x86_cpu_dev.init) - LOAD_OFFSET) {
+ 		__x86_cpu_dev_start = .;
+ 		*(.x86_cpu_dev.init)
+-- 
+1.8.3.1
+

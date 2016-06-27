@@ -1,0 +1,23 @@
+From 3485b15a0638e8602ff039ca5cb415d6c85587d8 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Thu, 16 Jan 2014 15:55:38 +0200
+Subject: [PATCH 07/18] edfi: disable LTO for empty.o
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ scripts/mod/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/scripts/mod/Makefile b/scripts/mod/Makefile
+index bc6b0df..2873f32 100644
+--- a/scripts/mod/Makefile
++++ b/scripts/mod/Makefile
+@@ -1,4 +1,4 @@
+-KBUILD_CFLAGS += ${DISABLE_LTO}
++CFLAGS_empty.o += $(DISABLE_LTO)
+ 
+ hostprogs-y	:= modpost mk_elfconfig
+ always		:= $(hostprogs-y) empty.o
+-- 
+1.8.3.1
+

@@ -1,0 +1,333 @@
+From 18255637f50ba81bdff693a4fabd7715be81835b Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Wed, 9 Apr 2014 18:21:38 +0200
+Subject: [PATCH 18/18] edfi: rewriting build system to accomodat for bitcode
+
+This patch rewrites a whole bunch of the buildsystem to accomodate for the
+tidbits introduced by doing the intermediary step into bitcode. We create a
+new category of build objects that represent the classic ELF objects, while by
+default we compile everything into bitcode. Finally we do a messy two step linking
+by combining the native ELF and the bitcode vmlinux chunks into what will be
+the final kernel
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ Makefile                 | 14 +++++++++++++-
+ arch/x86/Kbuild          |  7 +++++++
+ arch/x86/Makefile        |  4 ++++
+ arch/x86/kernel/Makefile |  3 +++
+ arch/x86/lib/Makefile    |  2 ++
+ firmware/Makefile        |  5 +++++
+ kernel/Makefile          |  2 ++
+ scripts/Makefile.build   | 20 ++++++++++++++++++++
+ scripts/Makefile.lto     | 10 ++++++++++
+ scripts/Makefile.modpost |  7 +++++--
+ scripts/gcc-ld           |  4 +++-
+ scripts/link-vmlinux.sh  | 15 ++++++++++++---
+ usr/Makefile             |  1 +
+ 13 files changed, 87 insertions(+), 7 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 5a19fc6..275b89a 100644
+--- a/Makefile
++++ b/Makefile
+@@ -554,6 +554,10 @@ drivers-y	:= drivers/ sound/ firmware/
+ net-y		:= net/
+ libs-y		:= lib/
+ core-y		:= usr/
++# firmware/ can only be linked as ELF
++llvmbin-y	:= firmware/
++llvmbin-y	+= usr/
++llvmbin-y	+= kernel/
+ endif # KBUILD_EXTMOD
+ 
+ ifeq ($(dot-config),1)
+@@ -797,18 +801,26 @@ libs-y1		:= $(patsubst %/, %/lib.a, $(libs-y))
+ libs-y2		:= $(patsubst %/, %/built-in.o, $(libs-y))
+ libs-y		:= $(libs-y1) $(libs-y2)
+ 
++llvmbin-y	:= $(patsubst %/, %/built-in.o.elf, $(llvmbin-y))
++llvmbin-y	+= $(patsubst %/, %/built-in.o.elf, $(llvmbin-l))
++llvmbin-y	+= $(patsubst %/, %/lib.a, $(llvmbin-l))
++
+ # Externally visible symbols (used by link-vmlinux.sh)
+ export KBUILD_VMLINUX_INIT := $(head-y) $(init-y)
+ export KBUILD_VMLINUX_MAIN := $(core-y) $(libs-y) $(drivers-y) $(net-y)
+ export KBUILD_LDS          := arch/$(SRCARCH)/kernel/vmlinux.lds
+ export LDFLAGS_vmlinux
++# Externally visible symbols used for bytecode compilation
++export KBUILD_LLVMBIN_INIT :=
++# llvmbin-y are only compiled as ELF
++export KBUILD_LLVMBIN_MAIN := $(llvmbin-y)
+ # used by scripts/pacmage/Makefile
+ export KBUILD_ALLDIRS := $(sort $(filter-out arch/%,$(vmlinux-alldirs)) arch Documentation include samples scripts tools virt)
+ 
+ vmlinux-deps := $(KBUILD_LDS) $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN)
+ 
+ # Final link of vmlinux
+-      cmd_link-vmlinux = $(CONFIG_SHELL) $< $(LD) $(LDFLAGS) $(LDFLAGS_vmlinux)
++      cmd_link-vmlinux = $(CONFIG_SHELL) $< $(LD) $(BITCODE_VMLINUX_LDFLAGS) $(LDFLAGS_vmlinux)
+ quiet_cmd_link-vmlinux = LINK    $@
+ 
+ # Include targets which we want to
+diff --git a/arch/x86/Kbuild b/arch/x86/Kbuild
+index e5287d8..2c96f20 100644
+--- a/arch/x86/Kbuild
++++ b/arch/x86/Kbuild
+@@ -16,3 +16,10 @@ obj-$(CONFIG_IA32_EMULATION) += ia32/
+ 
+ obj-y += platform/
+ obj-y += net/
++
++
++llvmbin-y += crypto/built-in.o
++llvmbin-y += realmode/built-in.o
++llvmbin-y += vdso/built-in.o
++llvmbin-y += power/built-in.o
++llvmbin-y += kernel/built-in.o.elf
+diff --git a/arch/x86/Makefile b/arch/x86/Makefile
+index 07639c6..3051a34 100644
+--- a/arch/x86/Makefile
++++ b/arch/x86/Makefile
+@@ -168,6 +168,10 @@ libs-y  += arch/x86/lib/
+ # See arch/x86/Kbuild for content of core part of the kernel
+ core-y += arch/x86/
+ 
++# Add the path for files needed as elf during compilation
++llvmbin-y += arch/x86/
++llvmbin-l += arch/x86/lib/
++
+ # drivers-y are linked after core-y
+ drivers-$(CONFIG_MATH_EMULATION) += arch/x86/math-emu/
+ drivers-$(CONFIG_PCI)            += arch/x86/pci/
+diff --git a/arch/x86/kernel/Makefile b/arch/x86/kernel/Makefile
+index 88d99ea..ae3c46f 100644
+--- a/arch/x86/kernel/Makefile
++++ b/arch/x86/kernel/Makefile
+@@ -118,3 +118,6 @@ ifeq ($(CONFIG_X86_64),y)
+ 	obj-$(CONFIG_PCI_MMCONFIG)	+= mmconf-fam10h_64.o
+ 	obj-y				+= vsmp_64.o
+ endif
++
++llvmbin-y := acpi/built-in.o
++llvmbin-y += entry_32.o
+diff --git a/arch/x86/lib/Makefile b/arch/x86/lib/Makefile
+index b005755..a0fa8e6 100644
+--- a/arch/x86/lib/Makefile
++++ b/arch/x86/lib/Makefile
+@@ -46,3 +46,5 @@ else
+         lib-y += copy_user_64.o copy_user_nocache_64.o
+ 	lib-y += cmpxchg16b_emu.o
+ endif
++
++llvmbin-y := $(obj-y)
+diff --git a/firmware/Makefile b/firmware/Makefile
+index cbb09ce..9a5ce1f 100644
+--- a/firmware/Makefile
++++ b/firmware/Makefile
+@@ -2,6 +2,9 @@
+ # kbuild file for firmware/
+ #
+ 
++cflags-$(CONFIG_LTO) += $(DISABLE_LTO)
++LDFLAGS := $(PRISTINE_LDFLAGS)
++
+ # Create $(fwabs) from $(CONFIG_EXTRA_FIRMWARE_DIR) -- if it doesn't have a
+ # leading /, it's relative to $(srctree).
+ fwdir := $(subst ",,$(CONFIG_EXTRA_FIRMWARE_DIR))
+@@ -247,5 +250,7 @@ targets := $(fw-shipped-) $(patsubst $(obj)/%,%, \
+ # Without this, built-in.o won't be created when it's empty, and the
+ # final vmlinux link will fail.
+ obj-n := dummy
++llvmbin-y				 += $(patsubst %,%.gen.o, $(fw-external-y))
++llvmbin-$(CONFIG_FIRMWARE_IN_KERNEL) += $(patsubst %,%.gen.o, $(fw-shipped-y))
+ 
+ hostprogs-y := ihex2fw
+diff --git a/kernel/Makefile b/kernel/Makefile
+index d74bf26..35c72b7 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -205,3 +205,5 @@ x509.genkey:
+ 	@echo >>x509.genkey "subjectKeyIdentifier=hash"
+ 	@echo >>x509.genkey "authorityKeyIdentifier=keyid"
+ endif
++
++llvmbin-y := sys_ni.o
+diff --git a/scripts/Makefile.build b/scripts/Makefile.build
+index 4dfa87e..621bee2 100644
+--- a/scripts/Makefile.build
++++ b/scripts/Makefile.build
+@@ -14,6 +14,8 @@ obj-y :=
+ obj-m :=
+ lib-y :=
+ lib-m :=
++llvmbin-y :=
++llvmbin-l :=
+ always :=
+ targets :=
+ subdir-y :=
+@@ -149,6 +151,10 @@ ifneq ($(strip $(obj-y) $(obj-m) $(obj-n) $(obj-) $(subdir-m) $(lib-target)),)
+ builtin-target := $(obj)/built-in.o
+ endif
+ 
++ifneq ($(strip $(llvmbin-y) $(llvmbin-m) $(obj-y) $(obj-m) $(obj-n) $(obj-) $(subdir-m) $(lib-target)),)
++llvmbin-target := $(obj)/builtin-elf.o
++endif
++
+ modorder-target := $(obj)/modules.order
+ 
+ # We keep a list of all modules in $(MODVERDIR)
+@@ -383,6 +389,18 @@ $(obj)/%-asn1.c $(obj)/%-asn1.h: $(src)/%.asn1 $(objtree)/scripts/asn1_compiler
+ # To build objects in subdirs, we need to descend into the directories
+ $(sort $(subdir-obj-y)): $(subdir-ym) ;
+ 
++ifdef llvmbin-target
++quiet_cmd_link_o_elf_builtin = LDELF      $@
++# If the list of objects to link is empty, just create an empty built-in.o
++cmd_link_o_elf_builtin = $(if $(strip $(llvmbin-y)),\
++		      $(LD) $(PRISTINE_LDFLAGS) -r -o $@.elf $(filter $(addprefix $(obj)/,$(llvmbin-y)), $^) $(filter $(addprefix $(obj)/,$(llvmbin-y)), $(addsuffix .elf,$^))\
++		      $(cmd_secanalysis),\
++		      true)
++
++
++endif # llvmbin-target
++
++
+ #
+ # Rule to compile a set of .o files into one .o file
+ #
+@@ -396,8 +414,10 @@ cmd_link_o_target = $(if $(strip $(obj-y)),\
+ 
+ $(builtin-target): $(obj-y) FORCE
+ 	$(call if_changed,link_o_target)
++	$(call if_changed,link_o_elf_builtin)
+ 
+ targets += $(builtin-target)
++
+ endif # builtin-target
+ 
+ #
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index f04d97b..fbeedcd 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -8,6 +8,8 @@ LTO_CFLAGS :=
+ export DISABLE_LTO
+ export LTO_CFLAGS
+ export LTO_LDFLAGS
++export PRISTINE_LDFLAGS
++export BITCODE_VMLINUX_LDFLAGS
+ 
+ ifdef CONFIG_LTO
+ # 4.7 works mostly, but it sometimes loses symbols on large builds
+@@ -67,6 +69,14 @@ endif
+ 	LDFINAL := ${CONFIG_SHELL} ${srctree}/scripts/gcc-ld \
+                   ${LTO_FINAL_CFLAGS}
+ 	LTO_LDFLAGS := -plugin /home/skyel/git/llvmlinux/toolchain/clang/build/llvm/lib/LLVMgold.so -plugin-opt=emit-llvm
++	LTO_LDFLAGS += empty_obj
++	PRISTINE_LDFLAGS := $(LDFLAGS)
++	BITCODE_VMLINUX_LDFLAGS := $(LDFLAGS)
++	BITCODE_VMLINUX_LDFLAGS += -plugin /home/skyel/git/llvmlinux/toolchain/clang/build/llvm/lib/LLVMgold.so 
++	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-opt
++	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-fp-elim
++	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-non-leaf-fp-elim
++	LDFLAGS += $(LTO_LDFLAGS)
+ 
+ else
+         $(warning "WARNING: Too old linker version $(call ld-version) for kernel LTO. You need Linux binutils. CONFIG_LTO disabled.")
+diff --git a/scripts/Makefile.modpost b/scripts/Makefile.modpost
+index 0d04e69..7539135 100644
+--- a/scripts/Makefile.modpost
++++ b/scripts/Makefile.modpost
+@@ -81,7 +81,10 @@ modpost = scripts/mod/modpost                    \
+ 
+ # We can go over command line length here, so be careful.
+ quiet_cmd_modpost = MODPOST $(words $(filter-out vmlinux FORCE, $^)) modules
+-      cmd_modpost = $(MODLISTCMD) | sed 's/\.ko$$/.o/' | $(modpost) -s -T -
++# Awful hack. Copy the normally generated mod.c files from the pregen folder
++#      cmd_modpost = $(MODLISTCMD) | sed 's/\.ko$$/.o/' | $(modpost) -s -T -
++      cmd_modpost = cp pregen/Module.symvers ./; echo 
++#				    for i in `$(MODLISTCMD) | sed 's/\.ko$$/.mod.c/'`; do cp pregen/$i $i; done; echo 
+ 
+ PHONY += __modpost
+ __modpost: $(modules:.ko=.o) FORCE
+@@ -114,7 +117,7 @@ targets += $(modules:.ko=.mod.o)
+ 
+ # Step 6), final link of the modules
+ quiet_cmd_ld_ko_o = LDFINAL [M]  $@
+-      cmd_ld_ko_o = $(LDFINAL) -r $(LDFLAGS)                            \
++      cmd_ld_ko_o = $(LDFINAL) -r $(BITCODE_VMLINUX_LDFLAGS)                            \
+                              $(KBUILD_LDFLAGS_MODULE) $(LDFLAGS_MODULE) \
+                              -o $@ $(filter-out FORCE,$^)
+ 
+diff --git a/scripts/gcc-ld b/scripts/gcc-ld
+index a9161da..06664ed9 100644
+--- a/scripts/gcc-ld
++++ b/scripts/gcc-ld
+@@ -7,8 +7,9 @@ ARGS="-nostdlib"
+ 
+ while [ "$1" != "" ] ; do
+ 	case "$1" in
++	-Wa,-mtune=generic32) N="-mtune=generic32" ;;
+ 	-save-temps|-m32|-m64) N="$1" ;;
+-	-r) N="$1" ;;
++	-Wl,r) N="$1" ;;
+ 	-[Wg]*) N="$1" ;;
+ 	-[olv]|-[Ofd]*|-nostdlib) N="$1" ;;
+ 	--end-group|--start-group)
+@@ -27,4 +28,5 @@ while [ "$1" != "" ] ; do
+ 	shift
+ done
+ 
++echo ==========================================================================
+ exec $CC $ARGS
+diff --git a/scripts/link-vmlinux.sh b/scripts/link-vmlinux.sh
+index 5665596..67efd1c 100644
+--- a/scripts/link-vmlinux.sh
++++ b/scripts/link-vmlinux.sh
+@@ -41,8 +41,15 @@ info()
+ # ${1} output file
+ modpost_link()
+ {
+-	${LD} ${LDFLAGS} -r -o ${1} ${KBUILD_VMLINUX_INIT}                   \
++	echo ${KBUILD_LLVMBIN_MAIN}
++	${LD} ${BITCODE_VMLINUX_LDFLAGS} -r -o .vmlinux.init.elf                      \
++		${KBUILD_VMLINUX_INIT}
++	${LD} ${LDFLAGS} -r -o .vmlinux.main.bc                                       \
+ 		--start-group ${KBUILD_VMLINUX_MAIN} --end-group
++	${LD} ${PRISTINE_LDFLAGS} -r -o .vmlinux.main.elf                                      \
++		empty_obj --start-group ${KBUILD_LLVMBIN_MAIN} --end-group
++	${LD} ${BITCODE_VMLINUX_LDFLAGS} -r -o ${1} .vmlinux.init.elf                 \
++		--start-group .vmlinux.main.bc .vmlinux.main.elf --end-group
+ }
+ 
+ # Link of vmlinux
+@@ -53,9 +60,11 @@ vmlinux_link()
+ 	local lds="${objtree}/${KBUILD_LDS}"
+ 
+ 	if [ "${SRCARCH}" != "um" ]; then
+-		${LDFINAL} ${LDFLAGS} ${LDFLAGS_vmlinux} -o ${2}                  \
++		${LD} ${BITCODE_VMLINUX_LDFLAGS} -r -o .vmlinux.final.elf                                      \
++			-u decompress_method empty_obj --start-group ${KBUILD_LLVMBIN_MAIN} ${KBUILD_VMLINUX_MAIN} --end-group
++		${LD} ${BITCODE_VMLINUX_LDFLAGS} ${LDFLAGS_vmlinux} -o ${2}                  \
+ 			-T ${lds} ${KBUILD_VMLINUX_INIT}                     \
+-			--start-group ${KBUILD_VMLINUX_MAIN} --end-group ${1}
++			--start-group .vmlinux.final.elf --end-group ${1}
+ 	else
+ 		${CC} ${CFLAGS_vmlinux} -o ${2}                              \
+ 			-Wl,-T,${lds} ${KBUILD_VMLINUX_INIT}                 \
+diff --git a/usr/Makefile b/usr/Makefile
+index 029ffe6..73bc511 100644
+--- a/usr/Makefile
++++ b/usr/Makefile
+@@ -25,6 +25,7 @@ AFLAGS_initramfs_data.o += -DINITRAMFS_IMAGE="usr/initramfs_data.cpio$(suffix_y)
+ 
+ # Generate builtin.o based on initramfs_data.o
+ obj-$(CONFIG_BLK_DEV_INITRD) := initramfs_data.o
++llvmbin-$(CONFIG_BLK_DEV_INITRD) := initramfs_data.o
+ 
+ # initramfs_data.o contains the compressed initramfs_data.cpio image.
+ # The image is included using .incbin, a dependency which is not
+-- 
+1.8.3.1
+

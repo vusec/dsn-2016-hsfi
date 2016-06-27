@@ -1,0 +1,43 @@
+From 7e5952b5b57625c0a9cd40628b196d271bf35e07 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Mon, 9 Jun 2014 21:54:32 +0200
+Subject: [PATCH] edfi_kernel: add ar plugin option to use the one from the
+ toolchain
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ scripts/Makefile.build | 4 ++++
+ scripts/Makefile.lto   | 1 +
+ 2 files changed, 5 insertions(+)
+
+diff --git a/scripts/Makefile.build b/scripts/Makefile.build
+index 9f0ee22..a0a9f0b 100644
+--- a/scripts/Makefile.build
++++ b/scripts/Makefile.build
+@@ -407,7 +407,11 @@ $(modorder-target): $(subdir-ym) FORCE
+ #
+ ifdef lib-target
+ quiet_cmd_link_l_target = AR      $@
++ifdef LLVM_VARS
++cmd_link_l_target = rm -f $@; $(AR) rcs$(KBUILD_ARFLAGS) $(LTO_PLUGIN) $@ $(lib-y)
++else
+ cmd_link_l_target = rm -f $@; $(AR) rcs$(KBUILD_ARFLAGS) $@ $(lib-y)
++endif
+ 
+ $(lib-target): $(lib-y) FORCE
+ 	$(call if_changed,link_l_target)
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index 924f504..d5f2c61 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -10,6 +10,7 @@ export LTO_CFLAGS
+ export LTO_LDFLAGS
+ export PRISTINE_LDFLAGS
+ export BITCODE_VMLINUX_LDFLAGS
++export LTO_PLUGIN
+ 
+ ifdef CONFIG_LTO
+ ifdef LLVM_VARS
+-- 
+1.8.3.1
+

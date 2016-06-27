@@ -1,0 +1,55 @@
+From 1823d82dc1f5e6ec66ab94e7a94b56acb78720ab Mon Sep 17 00:00:00 2001
+From: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+Date: Sun, 10 Nov 2013 16:11:10 +0100
+Subject: [PATCH 03/18] llvmlinux: modify mtdchar for successful compile
+
+This patch modifies mtdchar in order to have it successfully compiled
+with llvm + clang due to some inline assembly that gcc considers valid,
+though it should not.
+
+Signed-off-by: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+---
+ drivers/mtd/mtdchar.c | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/mtd/mtdchar.c b/drivers/mtd/mtdchar.c
+index 684bfa3..23d2572 100644
+--- a/drivers/mtd/mtdchar.c
++++ b/drivers/mtd/mtdchar.c
+@@ -553,6 +553,22 @@ static int mtdchar_blkpg_ioctl(struct mtd_info *mtd,
+ 	}
+ }
+ 
++static inline int mtd_access_ok(int type, 
++		unsigned long long addr,
++		unsigned long long size)
++{
++	int cf;
++	unsigned long long roksum;
++
++	cf = 0;
++	roksum = addr + size;
++	if (roksum < addr || roksum < size)
++		return 0;
++	if (roksum > user_addr_max())
++		return 0;
++	return 1;
++}
++
+ static int mtdchar_write_ioctl(struct mtd_info *mtd,
+ 		struct mtd_write_req __user *argp)
+ {
+@@ -562,8 +578,8 @@ static int mtdchar_write_ioctl(struct mtd_info *mtd,
+ 	int ret;
+ 
+ 	if (copy_from_user(&req, argp, sizeof(req)) ||
+-			!access_ok(VERIFY_READ, req.usr_data, req.len) ||
+-			!access_ok(VERIFY_READ, req.usr_oob, req.ooblen))
++			!mtd_access_ok(VERIFY_READ, req.usr_data, req.len) ||
++			!mtd_access_ok(VERIFY_READ, req.usr_oob, req.ooblen))
+ 		return -EFAULT;
+ 	if (!mtd->_write_oob)
+ 		return -EOPNOTSUPP;
+-- 
+1.8.3.1
+

@@ -1,0 +1,5 @@
+/autosetup-paths.inc
+/minix/
+/obj.i386/
+/obj_llvm.i386/
+

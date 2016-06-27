@@ -1,0 +1,148 @@
+#!/bin/bash
+source common.inc
+. $ROOT/script.inc
+cd $KERNEL_SRC
+
+
+_V=1
+set -eE
+EDFI_TROUBLE_FUNC="vmx_vcpu_run,__brk_reservation_fn_dmi_alloc__,kretprobe_trampoline_holder,jprobe_return,__brk_reservation_fn_early_pgt_alloc__"
+function log () {
+    if [[ $_V -eq 1 ]]; then
+        echo "$@"
+    fi
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_llvm_cmd()
+{
+	echo "$@" >&2
+	"$@"
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_di_env_args()
+{
+        echo DYNINSTAPI_RT_LIB=${DYNINST_RT_LIB} LD_LIBRARY_PATH=${DYNINST_LIB_DIR}:${LD_LIBRARY_PATH}
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_di_opt_args()
+{
+        DI_PASSES=""
+        for a in $*
+        do
+            LIB_FILE="$INSTALL_DIR/$a"
+            if [ -f "$LIB_FILE" ]; then
+                DI_PASSES+=" -load=$LIB_FILE"
+            fi
+            DI_PASSES+=$( echo " -$a" | awk -F . '{ print $1; }' )
+        done
+        build_di_source_env
+        echo $INSTALL_DIR/di-opt $DI_PASSES $DI_PASS_ARGS $DI_EXTRA_PASS_ARGS
+}
+
+function build_di_source_env()
+{
+        # not applicable to Linux (for now at least)
+	true
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_di_args()
+{
+        echo $( build_di_env_args $* ) $( build_di_opt_args $* )
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_di()
+{
+        local input=$1
+        local output=$2
+        shift; shift
+        build_llvm_cmd eval $( build_di_args $* ) -o $output $input
+}
+
+# copied from llvm-apps/apps/scripts/include/build.sh.inc
+build_bini()
+{
+        if [ $# -eq 0 ]; then
+            return
+        fi
+        if [ ${OUTPUT}.1 -ot ${OUTPUT} ]; then
+            cp ${OUTPUT} ${OUTPUT}.1
+        fi
+	build_di ${OUTPUT}.1 ${OUTPUT} $*
+        touch ${OUTPUT}.1
+}
+
+function get_llvm_passes() {
+	LLVM_PASSES=""
+        BINI_ARGS=""
+	for a in $*
+	do
+            if [[ $a = *.[a-z]* ]]; then
+                BINI_ARGS+="$a"
+                continue
+            fi
+		LIB_FILE="$INSTALL_DIR/$a.so"
+		if [ -f "$LIB_FILE" ]; then
+			LLVM_PASSES="$LLVM_PASSES -load=$LIB_FILE"
+		fi
+		LLVM_PASSES="$LLVM_PASSES -$a"
+	done
+
+	EDFI_PASS=`echo $LLVM_PASSES | grep "edfi" | wc -l`
+	if [ $EDFI_PASS -gt 0 ]; then
+		LLVM_PASSES="$LLVM_PASSES -fault-skip-functions $EDFI_TROUBLE_FUNC"
+	fi
+}
+
+get_llvm_passes $*
+echo $LLVM_PASSES
+echo $BINI_ARGS
+[ "$NM" != "" ] || NM=nm-new
+export NM
+# Proceed at your own risk
+
+PLUGIN="-plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=mcpu=i586"
+
+log "SECTIONIFY		EDFI"
+$LLVM_BIN/bin/opt -load=$ABS_ROOT/bin/sectionify.so -sectionify -sectionify-no-override '-sectionify-data-section-map=.*/edfi_data' '-sectionify-function-section-map=.*/edfi_functions' -o /tmp/kedfi edfi/built-in.o
+mv /tmp/kedfi edfi/built-in.o
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=emit-llvm empty_obj -r -u decompress_method -o .vmlinux.main.bc --start-group usr/built-in.o arch/x86/built-in.o kernel/built-in.o mm/built-in.o fs/built-in.o ipc/built-in.o security/built-in.o crypto/built-in.o block/built-in.o edfi/built-in.o lib/lib.a arch/x86/lib/lib.a lib/built-in.o arch/x86/lib/built-in.o drivers/built-in.o sound/built-in.o firmware/built-in.o arch/x86/pci/built-in.o arch/x86/power/built-in.o arch/x86/video/built-in.o net/built-in.o --end-group
+log "PASS		$@"
+$LLVM_BIN/bin/opt $LLVM_PASSES -mem2reg -strip-debug -o .vmlinux.main.edfi .vmlinux.main.bc
+mv .vmlinux.main.edfi .vmlinux.main.bc
+
+log "BUILD			vmlinux.o"
+ld.gold -m elf_i386 -r -o .vmlinux.main.elf empty_obj --start-group firmware/built-in.o.elf usr/built-in.o.elf kernel/built-in.o.elf arch/x86/built-in.o.elf arch/x86/lib/built-in.o.elf arch/x86/lib/lib.a --end-group
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=-disable-opt -r -o vmlinux.o .vmlinux.init.elf --start-group .vmlinux.main.bc .vmlinux.main.elf --end-group
+scripts/mod/modpost   -o $KERNEL_SRC/Module.symvers      vmlinux.o
+mv .version .old_version
+expr 0$(cat .old_version) + 1 >.version;
+
+log "BUILD			.tmp_kallsyms1.o"
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=-disable-opt -r -o .vmlinux.final.elf empty_obj --start-group firmware/built-in.o.elf usr/built-in.o.elf kernel/built-in.o.elf arch/x86/built-in.o.elf arch/x86/lib/built-in.o.elf arch/x86/lib/lib.a .vmlinux.main.bc arch/x86/power/built-in.o arch/x86/lib/lib.a firmware/built-in.o --end-group
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=-disable-opt --emit-relocs --build-id -o .tmp_vmlinux1 -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group
+nm -n .tmp_vmlinux1 | scripts/kallsyms --all-symbols | $LLVM_BIN/bin/clang -D__ASSEMBLY__ -no-integrated-as -m32 -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_AVX=1 -DCONFIG_AS_AVX2=1 -gdwarf-2 -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -c -o .tmp_kallsyms1.o -x assembler-with-cpp -
+
+log "BUILD			.tmp_kallsyms2.o"
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=-disable-opt --emit-relocs --build-id -o .tmp_vmlinux2 -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group .tmp_kallsyms1.o
+nm -n .tmp_vmlinux2 | scripts/kallsyms --all-symbols | $LLVM_BIN/bin/clang -D__ASSEMBLY__ -no-integrated-as -m32 -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_AVX=1 -DCONFIG_AS_AVX2=1 -gdwarf-2 -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -c -o .tmp_kallsyms2.o -x assembler-with-cpp -
+
+log "BUILD			vmlinux"
+ld.gold -m elf_i386 $PLUGIN -plugin-opt=-disable-opt --emit-relocs --build-id -o vmlinux -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group .tmp_kallsyms2.o
+
+$KERNEL_SRC/scripts/sortextable vmlinux
+/bin/sh $KERNEL_SRC/scripts/mksysmap vmlinux System.map
+/bin/sh $KERNEL_SRC/scripts/mksysmap .tmp_vmlinux2 .tmp_System.map
+rm -f .old_version
+
+log "APPLYING BINARY INSTRUMENTATION"
+OUTPUT=vmlinux build_bini $BINI_ARGS
+
+log "BUILD			bzImage"
+../build-bzImage.llvm
+
+log "DONE"

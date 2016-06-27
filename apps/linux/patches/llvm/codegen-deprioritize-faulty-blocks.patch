@@ -1,0 +1,14 @@
+diff --git a/lib/CodeGen/MachineBasicBlock.cpp b/lib/CodeGen/MachineBasicBlock.cpp
+index 78e9950..5c0d655 100644
+--- a/lib/CodeGen/MachineBasicBlock.cpp
++++ b/lib/CodeGen/MachineBasicBlock.cpp
+@@ -1075,6 +1075,9 @@ MachineBasicBlock::findDebugLoc(instr_iterator MBBI) {
+ /// getSuccWeight - Return weight of the edge from this block to MBB.
+ ///
+ uint32_t MachineBasicBlock::getSuccWeight(const_succ_iterator Succ) const {
++  if ((*Succ)->getName().find(".FAULTY") != StringRef::npos)
++    return 1;
++
+   if (Weights.empty())
+     return 0;
+ 

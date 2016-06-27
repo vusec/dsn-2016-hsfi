@@ -1,0 +1,53 @@
+From 5a29abceee8ea1ca7aa831987910214e23829cdc Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Wed, 9 Apr 2014 18:15:55 +0200
+Subject: [PATCH 17/18] edfi: fix ambiguous inline asm
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/include/asm/bitops.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/x86/include/asm/bitops.h b/arch/x86/include/asm/bitops.h
+index 6ed3d1e..80e0791 100644
+--- a/arch/x86/include/asm/bitops.h
++++ b/arch/x86/include/asm/bitops.h
+@@ -161,7 +161,7 @@ static inline void __clear_bit_unlock(unsigned nr, volatile unsigned long *addr)
+  */
+ static inline void __change_bit(int nr, volatile unsigned long *addr)
+ {
+-	asm volatile("btc %1,%0" : ADDR : "Ir" (nr));
++	asm volatile("btcl %1,%0" : ADDR : "Ir" (nr));
+ }
+ 
+ /**
+@@ -180,7 +180,7 @@ static inline void change_bit(int nr, volatile unsigned long *addr)
+ 			: CONST_MASK_ADDR(nr, addr)
+ 			: "iq" ((u8)CONST_MASK(nr)));
+ 	} else {
+-		asm volatile(LOCK_PREFIX "btc %1,%0"
++		asm volatile(LOCK_PREFIX "btcl %1,%0"
+ 			: BITOP_ADDR(addr)
+ 			: "Ir" (nr));
+ 	}
+@@ -288,7 +288,7 @@ static inline int __test_and_change_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm volatile("btc %2,%1\n\t"
++	asm volatile("btcl %2,%1\n\t"
+ 		     "sbb %0,%0"
+ 		     : "=r" (oldbit), ADDR
+ 		     : "Ir" (nr) : "memory");
+@@ -308,7 +308,7 @@ static inline int test_and_change_bit(int nr, volatile unsigned long *addr)
+ {
+ 	int oldbit;
+ 
+-	asm volatile(LOCK_PREFIX "btc %2,%1\n\t"
++	asm volatile(LOCK_PREFIX "btcl %2,%1\n\t"
+ 		     "sbb %0,%0"
+ 		     : "=r" (oldbit), ADDR : "Ir" (nr) : "memory");
+ 
+-- 
+1.8.3.1
+

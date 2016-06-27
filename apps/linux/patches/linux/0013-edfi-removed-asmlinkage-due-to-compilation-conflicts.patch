@@ -1,0 +1,44 @@
+From 7b643a0f168ae56915ff82beccedaed9bbe60731 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Wed, 9 Apr 2014 17:44:32 +0200
+Subject: [PATCH 13/18] edfi: removed asmlinkage due to compilation conflicts
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/boot/string.c | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/arch/x86/boot/string.c b/arch/x86/boot/string.c
+index 476ddea..574dedf 100644
+--- a/arch/x86/boot/string.c
++++ b/arch/x86/boot/string.c
+@@ -14,7 +14,7 @@
+ 
+ #include "boot.h"
+ 
+-asmlinkage int strcmp(const char *str1, const char *str2)
++int strcmp(const char *str1, const char *str2)
+ {
+ 	const unsigned char *s1 = (const unsigned char *)str1;
+ 	const unsigned char *s2 = (const unsigned char *)str2;
+@@ -30,7 +30,7 @@ asmlinkage int strcmp(const char *str1, const char *str2)
+ 	return 0;
+ }
+ 
+-asmlinkage int strncmp(const char *cs, const char *ct, size_t count)
++int strncmp(const char *cs, const char *ct, size_t count)
+ {
+ 	unsigned char c1, c2;
+ 
+@@ -46,7 +46,7 @@ asmlinkage int strncmp(const char *cs, const char *ct, size_t count)
+ 	return 0;
+ }
+ 
+-asmlinkage size_t strnlen(const char *s, size_t maxlen)
++size_t strnlen(const char *s, size_t maxlen)
+ {
+ 	const char *es = s;
+ 	while (*es && maxlen) {
+-- 
+1.8.3.1
+

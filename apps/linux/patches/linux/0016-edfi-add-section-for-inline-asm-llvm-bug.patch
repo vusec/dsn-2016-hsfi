@@ -1,0 +1,54 @@
+From 230bec2f9be63e0401f9dc89aa0b1c759d7782b4 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Wed, 9 Apr 2014 18:12:36 +0200
+Subject: [PATCH 16/18] edfi: add section for inline asm llvm bug
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/kernel/cpu/amd.c     | 2 +-
+ arch/x86/kernel/kprobes/opt.c | 1 +
+ arch/x86/kvm/emulate.c        | 3 ++-
+ 3 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/kernel/cpu/amd.c b/arch/x86/kernel/cpu/amd.c
+index 466e3d1..bf80fe7 100644
+--- a/arch/x86/kernel/cpu/amd.c
++++ b/arch/x86/kernel/cpu/amd.c
+@@ -67,7 +67,7 @@ static inline int wrmsrl_amd_safe(unsigned msr, unsigned long long val)
+  */
+ 
+ extern __visible void vide(void);
+-__asm__(".globl vide\n\t.align 4\nvide: ret");
++__asm__(".text\n.globl vide\n\t.align 4\nvide: ret");
+ 
+ static void init_amd_k5(struct cpuinfo_x86 *c)
+ {
+diff --git a/arch/x86/kernel/kprobes/opt.c b/arch/x86/kernel/kprobes/opt.c
+index 2c1ac28..0588761 100644
+--- a/arch/x86/kernel/kprobes/opt.c
++++ b/arch/x86/kernel/kprobes/opt.c
+@@ -89,6 +89,7 @@ static void __kprobes synthesize_set_arg1(kprobe_opcode_t *addr, unsigned long v
+ }
+ 
+ asm (
++			".text\n"
+ 			".global optprobe_template_entry\n"
+ 			"optprobe_template_entry:\n"
+ #ifdef CONFIG_X86_64
+diff --git a/arch/x86/kvm/emulate.c b/arch/x86/kvm/emulate.c
+index 2bc1e81..bca564b 100644
+--- a/arch/x86/kvm/emulate.c
++++ b/arch/x86/kvm/emulate.c
+@@ -389,7 +389,8 @@ static int fastop(struct x86_emulate_ctxt *ctxt, void (*fop)(struct fastop *));
+ /* Special case for SETcc - 1 instruction per cc */
+ #define FOP_SETCC(op) ".align 4; " #op " %al; ret \n\t"
+ 
+-asm(".global kvm_fastop_exception \n"
++asm(".text\n"
++    ".global kvm_fastop_exception \n"
+     "kvm_fastop_exception: xor %esi, %esi; ret");
+ 
+ FOP_START(setcc)
+-- 
+1.8.3.1
+

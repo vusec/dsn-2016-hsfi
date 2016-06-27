@@ -1,0 +1,38 @@
+From 15de10cda706615b88b536c309df9457e5b9c8ba Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Thu, 26 Jun 2014 16:21:53 +0200
+Subject: [PATCH] bitcode-kernel: some more asmlinkage
+
+Add memcpy and memset as asmlinkage since they are already declared this way
+in the arch headers
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ arch/x86/lib/memcpy_32.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/arch/x86/lib/memcpy_32.c b/arch/x86/lib/memcpy_32.c
+index e78761d..a1beb69 100644
+--- a/arch/x86/lib/memcpy_32.c
++++ b/arch/x86/lib/memcpy_32.c
+@@ -4,7 +4,7 @@
+ #undef memcpy
+ #undef memset
+ 
+-void *memcpy(void *to, const void *from, size_t n)
++asmlinkage void *memcpy(void *to, const void *from, size_t n)
+ {
+ #ifdef CONFIG_X86_USE_3DNOW
+ 	return __memcpy3d(to, from, n);
+@@ -14,7 +14,7 @@ void *memcpy(void *to, const void *from, size_t n)
+ }
+ EXPORT_SYMBOL(memcpy);
+ 
+-void *memset(void *s, int c, size_t count)
++asmlinkage void *memset(void *s, int c, size_t count)
+ {
+ 	return __memset(s, c, count);
+ }
+-- 
+1.8.3.1
+

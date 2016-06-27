@@ -1,0 +1,26 @@
+From f333d7d54f1fb2343757dd787975900a6cc73314 Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Tue, 18 Mar 2014 00:42:24 +0100
+Subject: [PATCH 1/2] llvmlinux: generate only no-pic code
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ tools/gold/gold-plugin.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/tools/gold/gold-plugin.cpp b/tools/gold/gold-plugin.cpp
+index 40f5fd6..da40185 100644
+--- a/tools/gold/gold-plugin.cpp
++++ b/tools/gold/gold-plugin.cpp
+@@ -163,7 +163,7 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
+             return LDPS_ERR;
+         }
+         // TODO: add an option to disable PIC.
+-        //output_type = LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC;
++        output_type = LTO_CODEGEN_PIC_MODEL_DYNAMIC_NO_PIC;
+         break;
+       case LDPT_OPTION:
+         options::process_plugin_option(tv->tv_u.tv_string);
+-- 
+1.8.3.1
+

@@ -1,0 +1,91 @@
+From 1d7e5652d8fb4c3ec08063086bc7f8d424fbdad6 Mon Sep 17 00:00:00 2001
+From: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+Date: Sun, 10 Nov 2013 16:16:02 +0100
+Subject: [PATCH 02/18] llvmlinux: fix str(cmp/len) compilation issues
+
+This patch fixes some of the issues that arise during compilation
+due to the clang flags needed to properly compile and run
+
+Signed-off-by: Razvan Ghitulete <razvan.ghitulete@gmail.com>
+---
+ arch/x86/include/asm/string_32.h | 35 ++++++++++++++++++++++++++++++++---
+ 1 file changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/arch/x86/include/asm/string_32.h b/arch/x86/include/asm/string_32.h
+index 3d3e835..5716659 100644
+--- a/arch/x86/include/asm/string_32.h
++++ b/arch/x86/include/asm/string_32.h
+@@ -143,6 +143,20 @@ static __always_inline void *__constant_memcpy(void *to, const void *from,
+ 
+ #define __HAVE_ARCH_MEMCPY
+ 
++#ifdef __clang__
++static inline void *__clang_memcpy(void *d, const void *s, size_t l)
++{
++	int d0, d1, d2;
++	asm volatile("rep movsb\n\t"
++		     : "=&c" (d0), "=&D" (d1), "=&S" (d2)
++		     : "0" (l), "1" ((long)d), "2" ((long)s)
++		     : "memory");
++	return d;
++}
++#define memcpy __clang_memcpy
++
++#else /* no __clang__ */
++
+ #ifdef CONFIG_X86_USE_3DNOW
+ 
+ #include <asm/mmx.h>
+@@ -192,9 +206,11 @@ static inline void *__memcpy3d(void *to, const void *from, size_t len)
+  * because it means that we know both memory operands in advance.
+  */
+ #define memcpy(t, f, n) __memcpy((t), (f), (n))
+-#endif
++#endif /* CONFIG_KMEMCHECK */
++
++#endif /* 3D Now! */
++#endif /* __clang__ */
+ 
+-#endif
+ 
+ #define __HAVE_ARCH_MEMMOVE
+ void *memmove(void *dest, const void *src, size_t n);
+@@ -243,7 +259,7 @@ void *__constant_c_memset(void *s, unsigned long c, size_t count)
+ 
+ /* Added by Gertjan van Wingerde to make minix and sysv module work */
+ #define __HAVE_ARCH_STRNLEN
+-extern size_t strnlen(const char *s, size_t count);
++size_t strnlen(const char *s, size_t count);
+ /* end of additional stuff */
+ 
+ #define __HAVE_ARCH_STRSTR
+@@ -321,6 +337,18 @@ void *__constant_c_and_count_memset(void *s, unsigned long pattern,
+ 	 : __memset_generic((s), (c), (count)))
+ 
+ #define __HAVE_ARCH_MEMSET
++#ifdef __clang__
++static inline void *__clang_memset(void *d, char c, size_t l)
++{
++	int d0, d1;
++	asm volatile("rep stosb\n\t"
++		     : "=&c" (d0), "=&D" (d1)
++		     : "0" (l), "1" (d), "a" (c)
++		     : "memory");
++	return d;
++}
++#define memset __clang_memset
++#else /* __clang__ */
+ #if (__GNUC__ >= 4)
+ #define memset(s, c, count) __builtin_memset(s, c, count)
+ #else
+@@ -330,6 +358,7 @@ void *__constant_c_and_count_memset(void *s, unsigned long pattern,
+ 				 (count))				\
+ 	 : __memset((s), (c), (count)))
+ #endif
++#endif /* __clang__*/
+ 
+ /*
+  * find the first occurrence of byte 'c', or 1 past the area if none
+-- 
+1.8.3.1
+

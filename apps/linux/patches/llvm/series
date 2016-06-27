@@ -1,0 +1,5 @@
+0001-llvmlinux-generate-only-no-pic-code.patch
+0002-llvmlinux-allow-for-global-scope-inline-asm.patch
+builtin_frame_address_aarch64.patch
+codegen-deprioritize-faulty-blocks.patch
+llvm3.3-objPath-use-after-free.patch

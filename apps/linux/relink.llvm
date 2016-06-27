@@ -1,0 +1,77 @@
+#!/bin/bash
+source common.inc
+. $ROOT/script.inc
+
+_V=1
+set -eE
+function log () {
+    if [[ $_V -eq 1 ]]; then
+        echo "$@"
+    fi
+}
+
+if [ -z $CLEAN ]
+then
+    if [ -e "./build.done" ]
+    then
+        CLEAN=0
+    else
+        CLEAN=1
+    fi
+fi
+
+if [ $CLEAN -gt 0 ]
+then
+    make clean
+    make install
+fi
+
+
+cd $KERNEL_SRC
+# Proceed at your own risk
+log "SECTIONIFY		EDFI"
+$LLVM_BIN/bin/opt -load=$ABS_ROOT/bin/sectionify.so -sectionify -sectionify-no-override '-sectionify-data-section-map=.*/edfi_data' '-sectionify-function-section-map=.*/edfi_functions' -o /tmp/kedfi edfi/built-in.o
+mv /tmp/kedfi edfi/built-in.o
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=emit-llvm empty_obj -r -u decompress_method -o .vmlinux.main.bc --start-group usr/built-in.o arch/x86/built-in.o kernel/built-in.o mm/built-in.o fs/built-in.o ipc/built-in.o security/built-in.o crypto/built-in.o block/built-in.o edfi/built-in.o lib/lib.a arch/x86/lib/lib.a lib/built-in.o arch/x86/lib/built-in.o drivers/built-in.o sound/built-in.o firmware/built-in.o arch/x86/pci/built-in.o arch/x86/power/built-in.o arch/x86/video/built-in.o net/built-in.o --end-group
+
+log "BUILD			vmlinux.o"
+ld.gold -m elf_i386 -r -o .vmlinux.main.elf empty_obj --start-group firmware/built-in.o.elf usr/built-in.o.elf kernel/built-in.o.elf arch/x86/built-in.o.elf arch/x86/lib/built-in.o.elf arch/x86/lib/lib.a --end-group
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=-disable-opt -r -o vmlinux.o .vmlinux.init.elf --start-group .vmlinux.main.bc .vmlinux.main.elf --end-group
+scripts/mod/modpost   -o $KERNEL_SRC/Module.symvers      vmlinux.o
+mv .version .old_version
+expr 0$(cat .old_version) + 1 >.version;
+
+log "BUILD			.tmp_kallsyms1.o"
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=-disable-opt -r -o .vmlinux.final.elf empty_obj --start-group firmware/built-in.o.elf usr/built-in.o.elf kernel/built-in.o.elf arch/x86/built-in.o.elf arch/x86/lib/built-in.o.elf arch/x86/lib/lib.a .vmlinux.main.bc arch/x86/power/built-in.o arch/x86/lib/lib.a firmware/built-in.o --end-group
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=-disable-opt --emit-relocs --build-id -o .tmp_vmlinux1 -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group
+nm -n .tmp_vmlinux1 | scripts/kallsyms --all-symbols | $LLVM_BIN/bin/clang -D__ASSEMBLY__ -no-integrated-as -m32 -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_AVX=1 -DCONFIG_AS_AVX2=1 -gdwarf-2 -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -c -o .tmp_kallsyms1.o -x assembler-with-cpp -
+log "BUILD			.tmp_kallsyms2.o"
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=-disable-opt --emit-relocs --build-id -o .tmp_vmlinux2 -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group .tmp_kallsyms1.o
+nm -n .tmp_vmlinux2 | scripts/kallsyms --all-symbols | $LLVM_BIN/bin/clang -D__ASSEMBLY__ -no-integrated-as -m32 -DCONFIG_AS_CFI=1 -DCONFIG_AS_CFI_SIGNAL_FRAME=1 -DCONFIG_AS_CFI_SECTIONS=1 -DCONFIG_AS_AVX=1 -DCONFIG_AS_AVX2=1 -gdwarf-2 -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -c -o .tmp_kallsyms2.o -x assembler-with-cpp -
+log "BUILD			vmlinux"
+ld.gold -m elf_i386 -plugin $LLVM_BIN/lib/LLVMgold.so -plugin-opt=-disable-opt --emit-relocs --build-id -o vmlinux -T $KERNEL_SRC/arch/x86/kernel/vmlinux.lds arch/x86/kernel/head_32.o arch/x86/kernel/head32.o arch/x86/kernel/head.o init/built-in.o --start-group .vmlinux.final.elf --end-group .tmp_kallsyms2.o
+
+$KERNEL_SRC/scripts/sortextable vmlinux
+/bin/sh $KERNEL_SRC/scripts/mksysmap vmlinux System.map
+/bin/sh $KERNEL_SRC/scripts/mksysmap .tmp_vmlinux2 .tmp_System.map
+rm -f .old_version
+
+log "BUILD			bzImage"
+nm vmlinux | sed -n -e 's/^\([0-9a-fA-F]*\) . \(_text\|_end\)$/#define VO_\2 0x\1/p' > arch/x86/boot/voffset.h
+objcopy  -R .comment -S vmlinux arch/x86/boot/compressed/vmlinux.bin
+arch/x86/tools/relocs vmlinux > arch/x86/boot/compressed/vmlinux.relocs;arch/x86/tools/relocs --abs-relocs vmlinux
+(cat arch/x86/boot/compressed/vmlinux.bin arch/x86/boot/compressed/vmlinux.relocs | gzip -n -f -9 > arch/x86/boot/compressed/vmlinux.bin.gz) || (rm -f arch/x86/boot/compressed/vmlinux.bin.gz ; false)
+arch/x86/boot/compressed/mkpiggy arch/x86/boot/compressed/vmlinux.bin.gz > arch/x86/boot/compressed/piggy.S || ( rm -f arch/x86/boot/compressed/piggy.S ; false )
+$LLVM_BIN/bin/clang -Wp,-MD,arch/x86/boot/compressed/.piggy.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments  -m32 -D__KERNEL__  -O2 -fno-strict-aliasing -fPIC -DDISABLE_BRANCH_PROFILING -march=i386 -ffreestanding -fno-stack-protector -D__ASSEMBLY__         -c -o arch/x86/boot/compressed/piggy.o arch/x86/boot/compressed/piggy.S
+ld.gold -m elf_i386   -T arch/x86/boot/compressed/vmlinux.lds arch/x86/boot/compressed/head_32.o arch/x86/boot/compressed/misc.o arch/x86/boot/compressed/string.o arch/x86/boot/compressed/cmdline.o arch/x86/boot/compressed/early_serial_console.o arch/x86/boot/compressed/piggy.o -o arch/x86/boot/compressed/vmlinux 
+nm arch/x86/boot/compressed/vmlinux | sed -n -e 's/^\([0-9a-fA-F]*\) . \(startup_32\|startup_64\|efi_pe_entry\|efi_stub_entry\|input_data\|_end\|z_.*\)$/#define ZO_\2 0x\1/p' > arch/x86/boot/zoffset.h
+$LLVM_BIN/bin/clang -Wp,-MD,arch/x86/boot/.header.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments   -g -Os -D_SETUP -D__KERNEL__ -DDISABLE_BRANCH_PROFILING -Wall -Wstrict-prototypes -march=i386 -mregparm=3 -include $KERNEL_SRC/arch/x86/boot/code16gcc.h -fno-strict-aliasing -fomit-frame-pointer -fno-pic  -ffreestanding  -fno-toplevel-reorder  -fno-stack-protector  -mpreferred-stack-boundary=2  -m32 -Wno-unused-value -Wno-unused-parameter -mno-sse -no-integrated-as -D__ASSEMBLY__   -DSVGA_MODE=NORMAL_VGA -Iarch/x86/boot   -c -o arch/x86/boot/header.o arch/x86/boot/header.S
+$LLVM_BIN/bin/clang -Wp,-MD,arch/x86/boot/.version.o.d  -nostdinc -isystem $LLVM_BIN/bin/../lib/clang/3.3.1/include -I$KERNEL_SRC/arch/x86/include -Iarch/x86/include/generated  -Iinclude -I$KERNEL_SRC/arch/x86/include/uapi -Iarch/x86/include/generated/uapi -I$KERNEL_SRC/include/uapi -Iinclude/generated/uapi -include $KERNEL_SRC/include/linux/kconfig.h -D__KERNEL__ -Qunused-arguments -g -Os -D_SETUP -D__KERNEL__ -DDISABLE_BRANCH_PROFILING -Wall -Wstrict-prototypes -march=i386 -mregparm=3 -include $KERNEL_SRC/arch/x86/boot/code16gcc.h -fno-strict-aliasing -fomit-frame-pointer -fno-pic -ffreestanding -fno-toplevel-reorder -fno-stack-protector -mpreferred-stack-boundary=2 -m32 -Wno-unused-value -Wno-unused-parameter -mno-sse -no-integrated-as    -D"KBUILD_STR(s)=#s" -D"KBUILD_BASENAME=KBUILD_STR(version)"  -D"KBUILD_MODNAME=KBUILD_STR(version)" -c -o arch/x86/boot/version.o arch/x86/boot/version.c
+ld.gold -m elf_i386   -T arch/x86/boot/setup.ld arch/x86/boot/a20.o arch/x86/boot/bioscall.o arch/x86/boot/cmdline.o arch/x86/boot/copy.o arch/x86/boot/cpu.o arch/x86/boot/cpucheck.o arch/x86/boot/early_serial_console.o arch/x86/boot/edd.o arch/x86/boot/header.o arch/x86/boot/main.o arch/x86/boot/mca.o arch/x86/boot/memory.o arch/x86/boot/pm.o arch/x86/boot/pmjump.o arch/x86/boot/printf.o arch/x86/boot/regs.o arch/x86/boot/string.o arch/x86/boot/tty.o arch/x86/boot/video.o arch/x86/boot/video-mode.o arch/x86/boot/version.o arch/x86/boot/video-vga.o arch/x86/boot/video-vesa.o arch/x86/boot/video-bios.o -o arch/x86/boot/setup.elf 
+objcopy  -O binary arch/x86/boot/setup.elf arch/x86/boot/setup.bin
+objcopy  -O binary -R .note -R .comment -S arch/x86/boot/compressed/vmlinux arch/x86/boot/vmlinux.bin
+arch/x86/boot/tools/build arch/x86/boot/setup.bin arch/x86/boot/vmlinux.bin arch/x86/boot/zoffset.h > arch/x86/boot/bzImage
+mkdir -p $KERNEL_SRC/arch/i386/boot
+ln -fsn ../../x86/boot/bzImage $KERNEL_SRC/arch/i386/boot/bzImage
+awk '!x[$0]++' $KERNEL_SRC/init/modules.order $KERNEL_SRC/usr/modules.order $KERNEL_SRC/arch/x86/modules.order $KERNEL_SRC/kernel/modules.order $KERNEL_SRC/mm/modules.order $KERNEL_SRC/fs/modules.order $KERNEL_SRC/ipc/modules.order $KERNEL_SRC/security/modules.order $KERNEL_SRC/crypto/modules.order $KERNEL_SRC/block/modules.order $KERNEL_SRC/edfi/modules.order $KERNEL_SRC/drivers/modules.order $KERNEL_SRC/sound/modules.order $KERNEL_SRC/firmware/modules.order $KERNEL_SRC/arch/x86/pci/modules.order $KERNEL_SRC/arch/x86/power/modules.order $KERNEL_SRC/arch/x86/video/modules.order $KERNEL_SRC/net/modules.order $KERNEL_SRC/lib/modules.order $KERNEL_SRC/arch/x86/lib/modules.order > $KERNEL_SRC/modules.order
+log "DONE"

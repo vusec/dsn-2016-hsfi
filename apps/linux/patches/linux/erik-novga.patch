@@ -1,0 +1,12 @@
+diff --git a/drivers/video/console/vgacon.c b/drivers/video/console/vgacon.c
+index 9d8feac..bc7ad53 100644
+--- a/drivers/video/console/vgacon.c
++++ b/drivers/video/console/vgacon.c
+@@ -371,6 +371,7 @@ static const char *vgacon_startup(void)
+ 	const char *display_desc = NULL;
+ 	u16 saved1, saved2;
+ 	volatile u16 *p;
++	goto no_vga;
+ 
+ 	if (screen_info.orig_video_isVGA == VIDEO_TYPE_VLFB ||
+ 	    screen_info.orig_video_isVGA == VIDEO_TYPE_EFI) {

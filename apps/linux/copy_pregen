@@ -1,0 +1,7 @@
+#!/bin/sh
+cp -r $1 $2
+cd $1
+mv net/netfilter/.xt_RATEEST.mod.c net/netfilter/xt_RATEEST.mod.c
+for i in `find . -name '*\.mod.c'`; do cp $i $2/$i ; done
+mv net/netfilter/xt_RATEEST.mod.c net/netfilter/.xt_RATEEST.mod.c
+cd -

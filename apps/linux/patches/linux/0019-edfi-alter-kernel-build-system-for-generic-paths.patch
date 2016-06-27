@@ -1,0 +1,118 @@
+From 5a51c3b9bf9ba828d15198bf952c7364b17f10ee Mon Sep 17 00:00:00 2001
+From: skyel <razvan.ghitulete@gmail.com>
+Date: Fri, 23 May 2014 16:27:31 +0200
+Subject: [PATCH] edfi: alter kernel build system for generic paths
+
+Alter the LTO buildsystem as to use generic toolchain paths which are
+passed in an additional out of tree makefile as variables
+
+Signed-off-by: skyel <razvan.ghitulete@gmail.com>
+---
+ Makefile                |  4 ++--
+ scripts/Makefile.lto    | 15 ++++++++++-----
+ scripts/link-vmlinux.sh | 21 ++++++++++++++++++++-
+ 3 files changed, 32 insertions(+), 8 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 275b89a..4dd957e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -782,7 +782,7 @@ export mod_sign_cmd
+ 
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+-core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/
++core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/ edfi/
+ 
+ vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
+ 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
+diff --git a/scripts/Makefile.lto b/scripts/Makefile.lto
+index fbeedcd..e7a58a0 100644
+--- a/scripts/Makefile.lto
++++ b/scripts/Makefile.lto
+@@ -12,6 +12,9 @@ export PRISTINE_LDFLAGS
+ export BITCODE_VMLINUX_LDFLAGS
+ 
+ ifdef CONFIG_LTO
++ifdef LLVM_VARS
++    include $(LLVM_VARS)
++endif
+ # 4.7 works mostly, but it sometimes loses symbols on large builds
+ # This can be worked around by marking those symbols visible,
+ # but that is fairly ugly and the problem is gone with 4.8
+@@ -64,18 +67,20 @@ endif
+ 	LTO_FINAL_CFLAGS += $(filter -m%,${KBUILD_CFLAGS})
+ 	LTO_FINAL_CFLAGS += $(filter -W%,${KBUILD_CFLAGS})
+ 
++	LTO_PLUGIN := --plugin $(LLVM_BIN)/lib/LLVMgold.so
+ 	KBUILD_CFLAGS += ${LTO_CFLAGS}
+ 
+ 	LDFINAL := ${CONFIG_SHELL} ${srctree}/scripts/gcc-ld \
+                   ${LTO_FINAL_CFLAGS}
+-	LTO_LDFLAGS := -plugin /home/skyel/git/llvmlinux/toolchain/clang/build/llvm/lib/LLVMgold.so -plugin-opt=emit-llvm
++
++	LTO_LDFLAGS := $(LTO_PLUGIN) -plugin-opt=emit-llvm
+ 	LTO_LDFLAGS += empty_obj
+-	PRISTINE_LDFLAGS := $(LDFLAGS)
++
+ 	BITCODE_VMLINUX_LDFLAGS := $(LDFLAGS)
+-	BITCODE_VMLINUX_LDFLAGS += -plugin /home/skyel/git/llvmlinux/toolchain/clang/build/llvm/lib/LLVMgold.so 
++	BITCODE_VMLINUX_LDFLAGS += $(LTO_PLUGIN)
+ 	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-opt
+-	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-fp-elim
+-	BITCODE_VMLINUX_LDFLAGS += -plugin-opt=-disable-non-leaf-fp-elim
++
++	PRISTINE_LDFLAGS := $(LDFLAGS)
+ 	LDFLAGS += $(LTO_LDFLAGS)
+ 
+ else
+diff --git a/scripts/link-vmlinux.sh b/scripts/link-vmlinux.sh
+index 67efd1c..8b112a8 100644
+--- a/scripts/link-vmlinux.sh
++++ b/scripts/link-vmlinux.sh
+@@ -28,6 +28,9 @@
+ # Error out on error
+ set -e
+ 
++# Load llvm-apps vars
++source scripts/llvm_apps.inc
++
+ # Nice output in kbuild format
+ # Will be supressed by "make -s"
+ info()
+@@ -46,6 +49,10 @@ modpost_link()
+ 		${KBUILD_VMLINUX_INIT}
+ 	${LD} ${LDFLAGS} -r -o .vmlinux.main.bc                                       \
+ 		--start-group ${KBUILD_VMLINUX_MAIN} --end-group
++	${LLVM_BIN}/bin/opt -load=${LLVM_APPS_BIN}/edfi.so -edfi \
++		-fault-skip-functions vmx_vcpu_run,__brk_reservation_fn_dmi_alloc__,kretprobe_trampoline_holder,jprobe_return,__brk_reservation_fn_early_pgt_alloc__ \
++		-mem2reg -o .vmlinux.main.edfi .vmlinux.main.bc
++	mv .vmlinux.main.edfi .vmlinux.main.bc
+ 	${LD} ${PRISTINE_LDFLAGS} -r -o .vmlinux.main.elf                                      \
+ 		empty_obj --start-group ${KBUILD_LLVMBIN_MAIN} --end-group
+ 	${LD} ${BITCODE_VMLINUX_LDFLAGS} -r -o ${1} .vmlinux.init.elf                 \
+@@ -60,8 +67,20 @@ vmlinux_link()
+ 	local lds="${objtree}/${KBUILD_LDS}"
+ 
+ 	if [ "${SRCARCH}" != "um" ]; then
++		${LLVM_BIN}/bin/opt -load=${LLVM_APPS_BIN}/sectionify.so -sectionify \
++			-sectionify-no-override -sectionify-data-section-map=.*/edfi_data -sectionify-function-section-map=.*/edfi_functions \
++			-o /tmp/kedfi edfi/built-in.o
++		mv /tmp/kedfi edfi/built-in.o
++		${LD} ${LDFLAGS} -r -u decompress_method -o .vmlinux.main.bc                                       \
++			--start-group ${KBUILD_VMLINUX_MAIN} --end-group
++		${LLVM_BIN}/bin/opt -load=${LLVM_APPS_BIN}/edfi.so -edfi \
++			-fault-skip-functions vmx_vcpu_run,__brk_reservation_fn_dmi_alloc__,kretprobe_trampoline_holder,jprobe_return,__brk_reservation_fn_early_pgt_alloc__ \
++			-mem2reg -o .vmlinux.main.edfi .vmlinux.main.bc
++		mv .vmlinux.main.edfi .vmlinux.main.bc
++
+ 		${LD} ${BITCODE_VMLINUX_LDFLAGS} -r -o .vmlinux.final.elf                                      \
+-			-u decompress_method empty_obj --start-group ${KBUILD_LLVMBIN_MAIN} ${KBUILD_VMLINUX_MAIN} --end-group
++			empty_obj --start-group ${KBUILD_LLVMBIN_MAIN} .vmlinux.main.bc arch/x86/power/built-in.o \
++			arch/x86/lib/lib.a firmware/built-in.o --end-group
+ 		${LD} ${BITCODE_VMLINUX_LDFLAGS} ${LDFLAGS_vmlinux} -o ${2}                  \
+ 			-T ${lds} ${KBUILD_VMLINUX_INIT}                     \
+ 			--start-group .vmlinux.final.elf --end-group ${1}
+-- 
+1.8.3.1
+

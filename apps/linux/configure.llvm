@@ -1,0 +1,41 @@
+#!/bin/bash
+
+MYPWD=`pwd`
+ROOT=../..
+
+: ${DISABLELTO:=0}
+: ${JOBS:=2}
+
+export JOBS
+
+. $ROOT/script.inc
+
+if [ "$DISABLELTO" -ne 0 ]; then
+	sed -i 's/CONFIG_LTO=y/# CONFIG_LTO is not set/' new_config
+	sed -i 's/# CONFIG_LTO_DISABLE is not set/CONFIG_LTO_DISABLE=y/' new_config
+else
+	sed -i 's/# CONFIG_LTO is not set/CONFIG_LTO=y/' new_config
+	sed -i 's/CONFIG_LTO_DISABLE=y/# CONFIG_LTO_DISABLE is not set/' new_config
+fi
+
+#Update mypwd.mk
+if [ ! -f mypwd.mk ]; then
+	echo "#Generated makefile PWD" > mypwd.mk
+	echo "MYPWD := $MYPWD/" >> mypwd.mk
+	if [ "$PATHBINUTILS" != "" ]; then
+		echo "BINUTILSINCLUDE := --with-binutils-include=$PATHBINUTILS/include" >> mypwd.mk
+	fi
+fi
+
+
+#Create common.inc and llvm_apps.inc needed by the kernel
+make -f vars.mk
+source $MYPWD/common.inc
+echo LLVM_APPS_BIN=$ABS_ROOT/bin >> common.inc
+
+echo ROOT=$ROOT >> common.inc
+
+#Build the toolchain as part of the configure
+make -j "$JOBS" build-llvm
+[ ! -d src ] || make -C src oldconfig
+
