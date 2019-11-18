@@ -15,7 +15,7 @@ LLVMVERSIONCONF=3.3
 source "$PATHROOT/autosetup.inc"
 
 : ${URLVMIMAGENAME:=ubuntu-13.10.qcow2}
-: ${URLVMIMAGE:="http://download.vusec.net/projects/hsfi/$URLVMIMAGENAME.bz2"}
+: ${URLVMIMAGE:="https://www.vusec.net/download/?t=dsn-2016-hsfi/$URLVMIMAGENAME.bz2"}
 : ${PATHVMIMG:="$PATHVMS/$URLVMIMAGENAME"}
 
 # download VM image
